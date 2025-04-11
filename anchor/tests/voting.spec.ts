@@ -20,13 +20,15 @@ describe("Voting", () => {
     );
   });
 
-  it("initializes a poll", async () => {
+  it("initializes a poll with a valid end time", async () => {
+    const currentTime = Math.floor(Date.now() / 1000);
+    const futureTime = currentTime + 3600;
     await votingProgram.methods.initializePoll(
-      new anchor.BN(1),
-      "What is your favorite color?",
-      new anchor.BN(100),
-      new anchor.BN(1739370789),
-    ).rpc();
+        new anchor.BN(1),
+        "What is your favorite color?",
+        new anchor.BN(currentTime),
+        new anchor.BN(futureTime)
+      ).rpc();
 
     const [pollAddress] = PublicKey.findProgramAddressSync(
       [new anchor.BN(1).toArrayLike(Buffer, "le", 8)],
@@ -34,13 +36,49 @@ describe("Voting", () => {
     );
 
     const poll = await votingProgram.account.poll.fetch(pollAddress);
-
-    console.log(poll);
-
     expect(poll.pollId.toNumber()).toBe(1);
     expect(poll.description).toBe("What is your favorite color?");
-    expect(poll.pollStart.toNumber()).toBe(100);
+    expect(poll.pollStart.toNumber()).toBe(currentTime);
+    expect(poll.pollEnd.toNumber()).toBe(futureTime);
   });
+
+  it("fails to initialize poll with past end time", async () => {
+    const currentTime = Math.floor(Date.now() / 1000);
+    const pastTime = currentTime - 3600; // 1 hour in the past
+
+    try {
+      await votingProgram.methods
+        .initializePoll(
+          new anchor.BN(2),
+          "Past poll",
+          new anchor.BN(currentTime),
+          new anchor.BN(pastTime)
+        )
+        .rpc();
+      // the test should fail here
+      expect(true).toBe(false);
+    } catch (error: any) {
+      expect(error.toString()).toContain("Poll end time must be in the future");
+    }
+  });
+
+  it("fails to initialize poll with invalid timestamp", async () => {
+    try {
+      await votingProgram.methods
+        .initializePoll(
+          new anchor.BN(3),
+          "Invalid timestamp poll",
+          new anchor.BN(100),
+          new anchor.BN(0) // Invalid timestamp
+        ).rpc();
+      // the test should fail here too
+      expect(true).toBe(false);
+    } catch (error: any) {
+      expect(error.toString()).toContain("Invalid Unix timestamp");
+    }
+  });
+
+  //since the poll initialization is expected to fail, so no need to fetch the poll
 
   it("initializes candidates", async () => {
     await votingProgram.methods.initializeCandidate(
